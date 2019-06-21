@@ -33,12 +33,13 @@ class StickBreaking(Continuous):
 
     Parameters
     ----------
-    a : array
+    a : numeric
         Concentration parameters (a > 0).
     """
 
     def __init__(self, a, weights, transform=transforms.stick_breaking,
                  *args, **kwargs):
+        
         shape = np.atleast_1d(a.shape)[-1]
 
         kwargs.setdefault("shape", shape)
@@ -57,7 +58,6 @@ class StickBreaking(Continuous):
                               np.nan)"""
 
     def _random(self, a, size=None):
-        gen = stats.dirichlet.rvs
         shape = tuple(np.atleast_1d(self.shape))
         if size[-len(shape):] == shape:
             real_size = size[:-len(shape)]
@@ -70,16 +70,16 @@ class StickBreaking(Continuous):
                 real_size = real_size + self.size_prefix
 
         if a.ndim == 1:
-            samples = gen(alpha=a, size=real_size)
+            samples = np.arange(0,100)
         else:
             unrolled = a.reshape((np.prod(a.shape[:-1]), a.shape[-1]))
-            samples = np.array([gen(alpha=aa, size=1) for aa in unrolled])
+            samples = np.array(np.arange(0,100))
             samples = samples.reshape(a.shape)
         return samples
 
     def random(self, point=None, size=None):
         """
-        Draw random values from Dirichlet distribution.
+        Draw random values (weights) from the Stick-Breaking Process
 
         Parameters
         ----------
@@ -94,14 +94,14 @@ class StickBreaking(Continuous):
         -------
         array
         """
-        a = draw_values([self.a], point=point, size=size)[0]
+        a = draw_values([self.a], point=point, size=size)
         samples = generate_samples(self._random,
                                    a=a,
                                    dist_shape=self.shape,
                                    size=size)
         return samples
 
-    def logp(self, value):
+    def logp(self, weights):
         """
         Calculate log-probability of the given set of weights.
 
@@ -126,6 +126,7 @@ class StickBreaking(Continuous):
         
         Beta_ = scipy.stats.beta(1, 2)
         logp_betas = [Beta_.logpdf(x) for x in beta_values]
+        print(logp_betas)
         return bound(sum(logp_betas))
 
     def _repr_latex_(self, name=None, dist=None):
