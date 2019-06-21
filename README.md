@@ -1,2 +1,2 @@
 # Dirichlet-Process
-Test runs of the implementation of the dirichlet process module in pyMC3
+Test runs of the implementation of the dirichlet process module for pymc3
