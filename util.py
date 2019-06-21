@@ -12,7 +12,7 @@ from pymc3.distributions import transforms
 from pymc3.util import get_variable_name
 from pymc3.distributions.distribution import (Continuous, Discrete, draw_values, generate_samples,
                            _DrawValuesContext)
-from pymc3.distributions.continuous import ChiSquared, Normal
+from pymc3.distributions.continuous import ChiSquared, Normal, Beta
 from pymc3.distributions.special import gammaln, multigammaln
 from pymc3.distributions.dist_math import bound, logpow, factln
 from ..model import (
@@ -47,8 +47,10 @@ class StickBreaking(Continuous):
         self.size_prefix = tuple(self.shape[:-1])
         self.k = tt.as_tensor_variable(shape)
         self.a = a = tt.as_tensor_variable(a)
-        self.wts = wts = tt.as_tensor_variable(weights)
-        self.mean = wts / tt.sum(wts)
+        self.wts = weights
+         #= tt.as_tensor_variable(weights)
+        self.mean = a / tt.sum(a)
+        #self.mean = sum(wts) / len(wts)
 
         """self.mode = tt.switch(tt.all(a > 1),
                               (a - 1) / tt.sum(a - 1),
@@ -115,27 +117,16 @@ class StickBreaking(Continuous):
         k = self.k
         a = self.a
         wts = self.wts
-        #wts_delayed = np.concatenate([-999, wts])
-        wts_delayed = wts
+        len_ = len(wts)
 
-
-
+        beta_values = [wts[0]]
+        for i in range(1, len_):
+            beta_new = beta_values[i-1] * wts[i] / ((1 - beta_values[i-1]) * wts[i - 1])
+            beta_values.append(beta_new)
         
-        #index = theano.shared(0)
-
-        # only defined for sum(weights) 
-        def inv_trans(prev_beta, weight, weight_prev):
-                    #index_inc = function([], index, updates=[(index, index+1)])
-                    #function()
-                    #return tt.switch(T.gt(index-1,0),prev_beta*weight/(weight_prev*(1-prev_beta)), weight)
-                    return tt.switch(tt.ge(wts_delayed, 0), prev_beta * weight / (weight_prev * (1 - prev_beta)), weight)
-
-        betas, updates = theano.scan(fn=inv_trans,
-                              outputs_info=[wts[0]],
-                              sequences=[wts, wts_delayed])
-
-        print(betas)
-        return bound(1)
+        Beta_ = scipy.stats.beta(1, 2)
+        logp_betas = [Beta_.logpdf(x) for x in beta_values]
+        return bound(sum(logp_betas))
 
     def _repr_latex_(self, name=None, dist=None):
         if dist is None:
