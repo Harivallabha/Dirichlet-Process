@@ -34,30 +34,37 @@ class StickBreaking(Continuous):
     Parameters
     ----------
     a : numeric
-        Concentration parameters (a > 0).
+        Concentration parameter (a > 0).
+    weights : 1-D array, numeric
+        Weights, that sum to 1. (weights[i] >= 0 for all i).
+    num_comp : integer
+        Number of components of the truncated stick-breaking process (Truncation-level).
     """
 
-    def __init__(self, a, weights, transform=transforms.stick_breaking,
+    def __init__(self, weights, a, num_comp, transform=transforms.stick_breaking,
                  *args, **kwargs):
         
-        shape = np.atleast_1d(a.shape)[-1]
+        shape = num_comp #Num_comp should be equal to the number of weights
+        self.a = a
 
         kwargs.setdefault("shape", shape)
         super().__init__(transform=transform, *args, **kwargs)
 
         self.size_prefix = tuple(self.shape[:-1])
         self.k = tt.as_tensor_variable(shape)
-        self.a = a = tt.as_tensor_variable(a)
-        self.wts = weights
+        self.weights = weights
+        self.wts = wts = tt.as_tensor_variable(weights)
+        #self.wts = weights
          #= tt.as_tensor_variable(weights)
-        self.mean = a / tt.sum(a)
+        #self.mean = a / tt.sum(a)
         #self.mean = sum(wts) / len(wts)
+        self.mean = wts / tt.sum(wts)
 
         """self.mode = tt.switch(tt.all(a > 1),
                               (a - 1) / tt.sum(a - 1),
                               np.nan)"""
 
-    def _random(self, a, size=None):
+    def _random(self, wts, size=None):
         shape = tuple(np.atleast_1d(self.shape))
         if size[-len(shape):] == shape:
             real_size = size[:-len(shape)]
@@ -69,12 +76,12 @@ class StickBreaking(Continuous):
             else:
                 real_size = real_size + self.size_prefix
 
-        if a.ndim == 1:
+        if wts.ndim == 1:
             samples = np.arange(0,100)
         else:
-            unrolled = a.reshape((np.prod(a.shape[:-1]), a.shape[-1]))
+            unrolled = wts.reshape((np.prod(wts.shape[:-1]), wts.shape[-1]))
             samples = np.array(np.arange(0,100))
-            samples = samples.reshape(a.shape)
+            samples = samples.reshape(wts.shape)
         return samples
 
     def random(self, point=None, size=None):
@@ -94,9 +101,9 @@ class StickBreaking(Continuous):
         -------
         array
         """
-        a = draw_values([self.a], point=point, size=size)
+        wts = draw_values([self.wts], point=point, size=size)
         samples = generate_samples(self._random,
-                                   a=a,
+                                   wts=wts,
                                    dist_shape=self.shape,
                                    size=size)
         return samples
@@ -116,15 +123,15 @@ class StickBreaking(Continuous):
         """
         k = self.k
         a = self.a
-        wts = self.wts
-        len_ = len(wts)
+        weights = self.weights
+        len_ = len(weights)
 
-        beta_values = [wts[0]]
+        beta_values = [weights[0]]
         for i in range(1, len_):
-            beta_new = beta_values[i-1] * wts[i] / ((1 - beta_values[i-1]) * wts[i - 1])
+            beta_new = beta_values[i-1] * weights[i] / ((1 - beta_values[i-1]) * weights[i - 1])
             beta_values.append(beta_new)
         
-        Beta_ = scipy.stats.beta(1, 2)
+        Beta_ = scipy.stats.beta(1, a)
         logp_betas = [Beta_.logpdf(x) for x in beta_values]
         print(logp_betas)
         return bound(sum(logp_betas))
