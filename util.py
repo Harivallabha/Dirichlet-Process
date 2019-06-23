@@ -157,7 +157,7 @@ class StickBreaking(Continuous):
         weights_from_2_to_n_minus_one = wts[1:-1]
         betas_from_2_to_n_minus_one = self.get_betas(weights_from_2_to_n_minus_one)
         beta_values=tt.concatenate(wts[0], betas_from_2_to_n_minus_one)
-        return tt.sum(continuous.Beta.dist(1,a).logp(beta_values))
+        return bound(tt.sum(continuous.Beta.dist(1,a).logp(beta_values)))
 
     def _repr_latex_(self, name=None, dist=None):
         if dist is None:
