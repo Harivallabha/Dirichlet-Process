@@ -36,20 +36,21 @@ class StickBreaking(Continuous):
     a : numeric
         Concentration parameter (a > 0).
     weights : 1-D array, numeric
-        Weights, that sum to 1. (weights[i] >= 0 for all i).
+
     num_comp : integer
         Number of components of the truncated stick-breaking process (Truncation-level).
     """
 
-    def __init__(self, weights, a, num_comp, transform=transforms.stick_breaking,
+    def __init__(self, a, num_comp, transform=transforms.stick_breaking,
                  *args, **kwargs):
         
         shape = num_comp #Num_comp should be equal to the number of weights
-        self.a = a
-
         kwargs.setdefault("shape", shape)
         super().__init__(transform=transform, *args, **kwargs)
+        self.a = tt.as_tensor_variable(a)
+        self.k = tt.as_tensor_variable(shape)
 
+        """
         self.size_prefix = tuple(self.shape[:-1])
         self.k = tt.as_tensor_variable(shape)
         self.weights = weights
@@ -59,13 +60,15 @@ class StickBreaking(Continuous):
         #self.mean = a / tt.sum(a)
         #self.mean = sum(wts) / len(wts)
         self.mean = wts / tt.sum(wts)
+        """
 
         """self.mode = tt.switch(tt.all(a > 1),
                               (a - 1) / tt.sum(a - 1),
                               np.nan)"""
+        self.mean = 1.  #Just to get stuff running. Testing the logp right now.
 
-    def _random(self, wts, size=None):
-        shape = tuple(np.atleast_1d(self.shape))
+    def _random(self, size=None):
+        """shape = tuple(np.atleast_1d(self.shape))
         if size[-len(shape):] == shape:
             real_size = size[:-len(shape)]
         else:
@@ -81,7 +84,11 @@ class StickBreaking(Continuous):
         else:
             unrolled = wts.reshape((np.prod(wts.shape[:-1]), wts.shape[-1]))
             samples = np.array(np.arange(0,100))
-            samples = samples.reshape(wts.shape)
+            samples = samples.reshape(wts.shape)"""
+
+
+        samples = np.array(np.arange(0,100))
+        samples = samples.reshape(wts.shape)
         return samples
 
     def random(self, point=None, size=None):
@@ -101,12 +108,22 @@ class StickBreaking(Continuous):
         -------
         array
         """
-        wts = draw_values([self.wts], point=point, size=size)
+        wts = draw_values([self.a], point=point, size=size)
         samples = generate_samples(self._random,
                                    wts=wts,
                                    dist_shape=self.shape,
                                    size=size)
         return samples
+
+    def get_betas(self, weights):
+        # wt_shape = tt.shape(weights) #Note that this should be k - 1, we could've directly set wt_shape to k-1 as well
+        # We want to index to go till k - 1, so arange should have input as wt_shape + 1
+        betas, _ = theano.scan(fn=lambda prior_beta, index, weights: (prior_beta * weights[index] / (1 - prior_beta) * weights[index - 1]),
+                              outputs_info=weights[0],
+                              sequences = theano.tensor.arange(1 , k),
+                              non_sequences=weights,
+                              n_steps=k - 2) #Also, since we've used 'sequences', we needn't have n_steps set to k - 2
+        return betas
 
     def logp(self, weights):
         """
@@ -121,11 +138,12 @@ class StickBreaking(Continuous):
         -------
         TensorVariable
         """
-        k = self.k
+        k = self.shape
         a = self.a
-        weights = self.weights
-        len_ = len(weights)
-
+        wts = tt.as_tensor_variable(weights)
+        
+        #len_ = len(weights)
+        """
         beta_values = [weights[0]]
         for i in range(1, len_):
             beta_new = beta_values[i-1] * weights[i] / ((1 - beta_values[i-1]) * weights[i - 1])
@@ -135,6 +153,11 @@ class StickBreaking(Continuous):
         logp_betas = [Beta_.logpdf(x) for x in beta_values]
         print(logp_betas)
         return bound(sum(logp_betas))
+        """
+        weights_from_2_to_n_minus_one = wts[1:-1]
+        betas_from_2_to_n_minus_one = self.get_betas(weights_from_2_to_n_minus_one)
+        beta_values=tt.concatenate(wts[0], betas_from_2_to_n_minus_one)
+        return tt.sum(continuous.Beta.dist(1,a).logp(beta_values))
 
     def _repr_latex_(self, name=None, dist=None):
         if dist is None:
