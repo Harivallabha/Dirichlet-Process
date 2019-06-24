@@ -109,4 +109,4 @@ class StickBreaking(Continuous):
             dist = self
         a = dist.a
         return r'${} \sim \text{{Stick-Breaking}}(\mathit{{a}}={})$'.format(name,
-                                                  get_variable_name(a))
+                                                get_variable_name(a))
