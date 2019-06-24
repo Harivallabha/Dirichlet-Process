@@ -11,24 +11,22 @@ from pymc3.theanof import floatX
 from pymc3.distributions import transforms
 from pymc3.util import get_variable_name
 from pymc3.distributions.distribution import (Continuous, Discrete, draw_values, generate_samples,
-                           _DrawValuesContext)
-from pymc3.distributions.continuous import ChiSquared, Normal, Beta
-from pymc3.distributions.special import gammaln, multigammaln
-from pymc3.distributions.dist_math import bound, logpow, factln
+                                              _DrawValuesContext)
+from pymc3.distributions.continuous import Beta
+from pymc3.distributions.dist_math import bound
 from ..model import (
     Model, get_named_nodes_and_relations, FreeRV,
     ObservedRV, MultiObservedRV, Context, InitContextMeta
 )
 
 
-class StickBreaking(Continuous): 
+class StickBreaking(Continuous):
     R"""
     Stick-Breaking Weights log-likelihood.
 
     ========  ===============================================
     Support   :math:`w_i \in (0, 1)` for :math:`i \in \{1, \ldots, K\}`
-              such that :math:`\sum w_i = 1`
-    Mean      :math:`\dfrac{w_i}{\sum w_i}`
+              such that :math:`\sum w_i = 1``
     ========  ===============================================
 
     Parameters
@@ -43,51 +41,16 @@ class StickBreaking(Continuous):
 
     def __init__(self, a, num_comp, transform=transforms.stick_breaking,
                  *args, **kwargs):
-        
-        shape = num_comp #Num_comp should be equal to the number of weights
+        shape = num_comp   # Num_comp should be equal to the number of weights
         kwargs.setdefault("shape", shape)
-        super().__init__(transform=transform, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.a = tt.as_tensor_variable(a)
         self.k = tt.as_tensor_variable(shape)
-
-        """
-        self.size_prefix = tuple(self.shape[:-1])
-        self.k = tt.as_tensor_variable(shape)
-        self.weights = weights
-        self.wts = wts = tt.as_tensor_variable(weights)
-        #self.wts = weights
-         #= tt.as_tensor_variable(weights)
-        #self.mean = a / tt.sum(a)
-        #self.mean = sum(wts) / len(wts)
-        self.mean = wts / tt.sum(wts)
-        """
-
-        """self.mode = tt.switch(tt.all(a > 1),
-                              (a - 1) / tt.sum(a - 1),
-                              np.nan)"""
-        self.mean = 1.  #Just to get stuff running. Testing the logp right now.
+        self.mean = 1.  # Just to get stuff running. Testing the logp right now.
+        self.trans = transform
 
     def _random(self, size=None):
-        """shape = tuple(np.atleast_1d(self.shape))
-        if size[-len(shape):] == shape:
-            real_size = size[:-len(shape)]
-        else:
-            real_size = size
-        if self.size_prefix:
-            if real_size and real_size[0] == 1:
-                real_size = real_size[1:] + self.size_prefix
-            else:
-                real_size = real_size + self.size_prefix
-
-        if wts.ndim == 1:
-            samples = np.arange(0,100)
-        else:
-            unrolled = wts.reshape((np.prod(wts.shape[:-1]), wts.shape[-1]))
-            samples = np.array(np.arange(0,100))
-            samples = samples.reshape(wts.shape)"""
-
-
-        samples = np.array(np.arange(0,100))
+        samples = np.array(np.arange(0, 100))
         samples = samples.reshape(wts.shape)
         return samples
 
@@ -115,16 +78,6 @@ class StickBreaking(Continuous):
                                    size=size)
         return samples
 
-    def get_betas(self, weights):
-        # wt_shape = tt.shape(weights) #Note that this should be k - 1, we could've directly set wt_shape to k-1 as well
-        # We want to index to go till k - 1, so arange should have input as wt_shape + 1
-        betas, _ = theano.scan(fn=lambda prior_beta, index, weights: (prior_beta * weights[index] / (1 - prior_beta) * weights[index - 1]),
-                              outputs_info=weights[0],
-                              sequences = theano.tensor.arange(1 , k),
-                              non_sequences=weights,
-                              n_steps=k - 2) #Also, since we've used 'sequences', we needn't have n_steps set to k - 2
-        return betas
-
     def logp(self, weights):
         """
         Calculate log-probability of the given set of weights.
@@ -140,28 +93,20 @@ class StickBreaking(Continuous):
         """
         k = self.shape
         a = self.a
+
+        Continuous.__init__(self, transform=self.trans)
         wts = tt.as_tensor_variable(weights)
-        
-        #len_ = len(weights)
-        """
-        beta_values = [weights[0]]
-        for i in range(1, len_):
-            beta_new = beta_values[i-1] * weights[i] / ((1 - beta_values[i-1]) * weights[i - 1])
-            beta_values.append(beta_new)
-        
-        Beta_ = scipy.stats.beta(1, a)
-        logp_betas = [Beta_.logpdf(x) for x in beta_values]
-        print(logp_betas)
-        return bound(sum(logp_betas))
-        """
-        weights_from_2_to_n_minus_one = wts[1:-1]
-        betas_from_2_to_n_minus_one = self.get_betas(weights_from_2_to_n_minus_one)
-        beta_values=tt.concatenate(wts[0], betas_from_2_to_n_minus_one)
-        return bound(tt.sum(continuous.Beta.dist(1,a).logp(beta_values)))
+        wt = wts[:-1]
+        wt_sum = tt.extra_ops.cumsum(wt)
+        denom = 1 - wt_sum
+        denom_shift = tt.concatenate([[1.], denom])
+        betas = wts/denom_shift
+        Beta_ = pm.Beta.dist(1, a)
+        return bound(Beta_.logp(betas).sum(), tt.all(betas > 0))
 
     def _repr_latex_(self, name=None, dist=None):
         if dist is None:
             dist = self
         a = dist.a
         return r'${} \sim \text{{Stick-Breaking}}(\mathit{{a}}={})$'.format(name,
-                                                get_variable_name(a))
+                                                  get_variable_name(a))
