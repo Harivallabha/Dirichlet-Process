@@ -43,7 +43,7 @@ class StickBreaking(Continuous):
                  *args, **kwargs):
         shape = num_comp   # Num_comp should be equal to the number of weights
         kwargs.setdefault("shape", shape)
-        super().__init__(*args, **kwargs)
+        super().__init__(transform = transform, *args, **kwargs)
         self.a = tt.as_tensor_variable(a)
         self.k = tt.as_tensor_variable(shape)
         self.mean = 1.  # Just to get stuff running. Testing the logp right now.
@@ -94,7 +94,6 @@ class StickBreaking(Continuous):
         k = self.shape
         a = self.a
 
-        Continuous.__init__(self, transform=self.trans)
         wts = tt.as_tensor_variable(weights)
         wt = wts[:-1]
         wt_sum = tt.extra_ops.cumsum(wt)
@@ -102,11 +101,15 @@ class StickBreaking(Continuous):
         denom_shift = tt.concatenate([[1.], denom])
         betas = wts/denom_shift
         Beta_ = pm.Beta.dist(1, a)
-        return bound(Beta_.logp(betas).sum(), tt.all(betas > 0))
+        logp = Beta_.logp(betas).sum()
+        return bound(logp,
+                     tt.all(betas > 0), tt.all(weights) >= 0,
+                     wt_sum < 1, wt_sum > 0,
+                     denom > 0)
 
     def _repr_latex_(self, name=None, dist=None):
         if dist is None:
             dist = self
         a = dist.a
         return r'${} \sim \text{{Stick-Breaking}}(\mathit{{a}}={})$'.format(name,
-                                                get_variable_name(a))
+                                                  get_variable_name(a))
