@@ -93,7 +93,7 @@ class StickBreaking(Continuous):
         """
         k = self.shape
         a = self.a
-
+        
         wts = tt.as_tensor_variable(weights)
         wt = wts[:-1]
         wt_sum = tt.extra_ops.cumsum(wt)
@@ -102,10 +102,10 @@ class StickBreaking(Continuous):
         betas = wts/denom_shift
         Beta_ = pm.Beta.dist(1, a)
         logp = Beta_.logp(betas).sum()
-        return bound(logp,
-                     tt.all(betas > 0), tt.all(weights) >= 0,
+        return bound(Beta_.logp(betas).sum(),
+                     tt.all(betas > 0), tt.all(weights) > 0,
                      wt_sum < 1, wt_sum > 0,
-                     denom > 0)
+                     tt.all(denom) > 0)
 
     def _repr_latex_(self, name=None, dist=None):
         if dist is None:
